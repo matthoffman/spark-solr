@@ -289,7 +289,6 @@ public class SolrRDD implements Serializable {
 
   private static final Map<String,DataType> solrDataTypes = new HashMap<String, DataType>();
   static {
-    // TODO: handle multi-valued somehow?
     solrDataTypes.put("solr.StrField", DataType.StringType);
     solrDataTypes.put("solr.TextField", DataType.StringType);
     solrDataTypes.put("solr.BoolField", DataType.BooleanType);
@@ -298,6 +297,14 @@ public class SolrRDD implements Serializable {
     solrDataTypes.put("solr.TrieFloatField", DataType.FloatType);
     solrDataTypes.put("solr.TrieDoubleField", DataType.DoubleType);
     solrDataTypes.put("solr.TrieDateField", DataType.TimestampType);
+    solrDataTypes.put("solr.UUIDField", DataType.StringType);
+    solrDataTypes.put("solr.BinaryField", DataType.BinaryType);
+//    solrDataTypes.put("solr.CurrencyField", DataType.BinaryType); TODO: ??? double?
+  }
+
+  public JavaSchemaRDD queryShards(JavaSQLContext sqlContext, SolrQuery query) throws Exception {
+    JavaRDD<SolrDocument> docs = queryShards(new JavaSparkContext(sqlContext.sqlContext().sparkContext()), query);
+    return applySchema(sqlContext, query, docs, zkHost, collection);
   }
 
   public JavaSchemaRDD applySchema(JavaSQLContext sqlContext,
@@ -318,12 +325,16 @@ public class SolrRDD implements Serializable {
 
     // Build up a schema based on the fields requested
     final String[] fields = query.getFields().split(",");
-    Map<String,String> fieldTypeMap = getFieldTypes(fields, solrBaseUrl, collection);
+    Map<String,FieldType> fieldTypeMap = getFieldTypes(fields, solrBaseUrl, collection);
     List<StructField> listOfFields = new ArrayList<StructField>();
     for (String field : fields) {
-      String fieldType = fieldTypeMap.get(field);
-      DataType dataType = (fieldType != null) ? solrDataTypes.get(fieldType) : null;
+      FieldType fieldType = fieldTypeMap.get(field);
+      DataType dataType = (fieldType != null) ? solrDataTypes.get(fieldType.fieldTypeClass) : null;
       if (dataType == null) dataType = DataType.StringType;
+      if (fieldType.isMultivalued) {
+        // its multivalued, so it's technically an array of the given datatype
+        dataType = DataType.createArrayType(dataType, false);
+      }
       listOfFields.add(DataType.createStructField(field, dataType, true));
     }
 
@@ -340,10 +351,20 @@ public class SolrRDD implements Serializable {
     return sqlContext.applySchema(rows, DataType.createStructType(listOfFields));
   }
 
-  private static Map<String,String> getFieldTypes(String[] fields, String solrBaseUrl, String collection) {
+  private static class FieldType {
+    final String fieldTypeClass;
+    final boolean isMultivalued;
+
+    public FieldType(String fieldTypeClass, boolean isMultivalued) {
+      this.fieldTypeClass = fieldTypeClass;
+      this.isMultivalued = isMultivalued;
+    }
+  }
+
+  private static Map<String,FieldType> getFieldTypes(String[] fields, String solrBaseUrl, String collection) {
 
     // collect mapping of Solr field to type
-    Map<String,String> fieldTypeMap = new HashMap<String,String>();
+    Map<String,FieldType> fieldTypeMap = new HashMap<String,FieldType>();
     for (String field : fields) {
 
       if (fieldTypeMap.containsKey(field))
@@ -354,10 +375,11 @@ public class SolrRDD implements Serializable {
       try {
 
         String fieldType = null;
+        boolean multivalued = false;
         try {
-          Map<String, Object> fieldMeta =
-            SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldUrl, 2);
+          Map<String, Object> fieldMeta = SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), fieldUrl, 2);
           fieldType = SolrJsonSupport.asString("/field/type", fieldMeta);
+          multivalued = isMultivalued("/field", fieldMeta);
         } catch (SolrException solrExc) {
           int errCode = solrExc.code();
           if (errCode == 404) {
@@ -366,15 +388,16 @@ public class SolrRDD implements Serializable {
               // see if the field is a dynamic field
               String dynField = "*"+field.substring(lio);
 
-              fieldType = fieldTypeMap.get(dynField);
-              if (fieldType == null) {
+              FieldType ft = fieldTypeMap.get(dynField);
+              if (ft == null) {
                 String dynamicFieldsUrl = solrBaseUrl+collection+"/schema/dynamicfields/"+dynField;
                 try {
                   Map<String, Object> dynFieldMeta =
                     SolrJsonSupport.getJson(SolrJsonSupport.getHttpClient(), dynamicFieldsUrl, 2);
                   fieldType = SolrJsonSupport.asString("/dynamicField/type", dynFieldMeta);
-
-                  fieldTypeMap.put(dynField, fieldType);
+                  multivalued = isMultivalued("/dynamicField", dynFieldMeta);
+                  ft = new FieldType(fieldType , multivalued);
+                  fieldTypeMap.put(dynField, ft);
                 } catch (Exception exc) {
                   // just ignore this and throw the outer exc
                   throw solrExc;
@@ -396,10 +419,10 @@ public class SolrRDD implements Serializable {
 
         // map all the other fields for this type to speed up the schema analysis
         List<String> otherFields = SolrJsonSupport.asList("/fieldType/fields", fieldTypeMeta);
-        for (String other : otherFields)
-          fieldTypeMap.put(other, fieldTypeClass);
-
-        fieldTypeMap.put(field, fieldTypeClass);
+        for (String other : otherFields) {
+          fieldTypeMap.put(other, new FieldType(fieldTypeClass, multivalued));
+        }
+        fieldTypeMap.put(field, new FieldType(fieldTypeClass, multivalued));
 
       } catch (Exception exc) {
         log.warn("Can't get field type for field "+field+" due to: "+exc);
@@ -407,6 +430,15 @@ public class SolrRDD implements Serializable {
     }
 
     return fieldTypeMap;
+  }
+
+  private static boolean isMultivalued(String prefix, Map<String, Object> fieldMeta) {
+    boolean multivalued = false;
+    Object mv = SolrJsonSupport.atPath(prefix + "/multiValued", fieldMeta);
+    if (mv == null || !mv.toString().equals("true")) {
+      multivalued = true;
+    }
+    return multivalued;
   }
 
   public static QueryResponse querySolr(SolrServer solrServer, SolrQuery solrQuery, int startIndex, String cursorMark) throws SolrServerException {
