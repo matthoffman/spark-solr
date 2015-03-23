@@ -34,9 +34,9 @@ public class SolrQueryProcessor implements SparkApp.RDDProcessor {
 
   private static final class WordCountSorter implements Comparator<Tuple2<String, Integer>>, Serializable {
     public int compare(Tuple2<String, Integer> o1, Tuple2<String, Integer> o2) {
-      Integer lhs = o1._2;
-      Integer rhs = o2._2;
-      return (lhs == rhs) ? (o1._1.compareTo(o2._1)) : (lhs > rhs ? 1 : -1);
+      Integer lhs = o1._2();
+      Integer rhs = o2._2();
+      return (lhs == rhs) ? (o1._1().compareTo(o2._1())) : (lhs > rhs ? 1 : -1);
     }
   }
 
