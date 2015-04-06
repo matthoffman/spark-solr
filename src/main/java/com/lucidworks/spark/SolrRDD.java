@@ -39,12 +39,13 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.mllib.feature.HashingTF;
-import org.apache.spark.sql.RowFactory;
-import org.apache.spark.sql.SQLContext;
-import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.api.java.JavaSQLContext;
+import org.apache.spark.sql.api.java.JavaSchemaRDD;
 
-import org.apache.spark.sql.types.*;
-import org.apache.spark.sql.Row;
+import org.apache.spark.sql.api.java.DataType;
+import org.apache.spark.sql.api.java.StructType;
+import org.apache.spark.sql.api.java.StructField;
+import org.apache.spark.sql.api.java.Row;
 
 
 public class SolrRDD implements Serializable {
@@ -288,25 +289,25 @@ public class SolrRDD implements Serializable {
 
   private static final Map<String,DataType> solrDataTypes = new HashMap<String, DataType>();
   static {
-    solrDataTypes.put("solr.StrField", DataTypes.StringType);
-    solrDataTypes.put("solr.TextField", DataTypes.StringType);
-    solrDataTypes.put("solr.BoolField", DataTypes.BooleanType);
-    solrDataTypes.put("solr.TrieIntField", DataTypes.IntegerType);
-    solrDataTypes.put("solr.TrieLongField", DataTypes.LongType);
-    solrDataTypes.put("solr.TrieFloatField", DataTypes.FloatType);
-    solrDataTypes.put("solr.TrieDoubleField", DataTypes.DoubleType);
-    solrDataTypes.put("solr.TrieDateField", DataTypes.TimestampType);
-    solrDataTypes.put("solr.UUIDField", DataTypes.StringType);
-    solrDataTypes.put("solr.BinaryField", DataTypes.BinaryType);
+    solrDataTypes.put("solr.StrField", DataType.StringType);
+    solrDataTypes.put("solr.TextField", DataType.StringType);
+    solrDataTypes.put("solr.BoolField", DataType.BooleanType);
+    solrDataTypes.put("solr.TrieIntField", DataType.IntegerType);
+    solrDataTypes.put("solr.TrieLongField", DataType.LongType);
+    solrDataTypes.put("solr.TrieFloatField", DataType.FloatType);
+    solrDataTypes.put("solr.TrieDoubleField", DataType.DoubleType);
+    solrDataTypes.put("solr.TrieDateField", DataType.TimestampType);
+    solrDataTypes.put("solr.UUIDField", DataType.StringType);
+    solrDataTypes.put("solr.BinaryField", DataType.BinaryType);
 //    solrDataTypes.put("solr.CurrencyField", DataType.BinaryType); TODO: ??? double?
   }
 
-  public DataFrame queryShards(SQLContext sqlContext, SolrQuery query) throws Exception {
-    JavaRDD<SolrDocument> docs = queryShards(new JavaSparkContext(sqlContext.sparkContext()), query);
+  public JavaSchemaRDD queryShards(JavaSQLContext sqlContext, SolrQuery query) throws Exception {
+    JavaRDD<SolrDocument> docs = queryShards(new JavaSparkContext(sqlContext.sqlContext().sparkContext()), query);
     return applySchema(sqlContext, query, docs, zkHost, collection);
   }
 
-  public DataFrame applySchema(SQLContext sqlContext,
+  public JavaSchemaRDD applySchema(JavaSQLContext sqlContext,
                                    SolrQuery query,
                                    JavaRDD<SolrDocument> docs,
                                    String zkHost,
@@ -329,12 +330,12 @@ public class SolrRDD implements Serializable {
     for (String field : fields) {
       FieldType fieldType = fieldTypeMap.get(field);
       DataType dataType = (fieldType != null) ? solrDataTypes.get(fieldType.fieldTypeClass) : null;
-      if (dataType == null) dataType = DataTypes.StringType;
+      if (dataType == null) dataType = DataType.StringType;
       if (fieldType.isMultivalued) {
         // its multivalued, so it's technically an array of the given datatype
-        dataType = DataTypes.createArrayType(dataType, false);
+        dataType = DataType.createArrayType(dataType, false);
       }
-      listOfFields.add(DataTypes.createStructField(field, dataType, true));
+      listOfFields.add(DataType.createStructField(field, dataType, true));
     }
 
     // now convert each SolrDocument to a Row object
@@ -343,11 +344,11 @@ public class SolrRDD implements Serializable {
         List<Object> vals = new ArrayList<Object>(fields.length);
         for (String field : fields)
           vals.add(doc.getFirstValue(field));
-        return RowFactory.create(vals.toArray());
+        return Row.create(vals.toArray());
       }
     });
 
-    return sqlContext.applySchema(rows, DataTypes.createStructType(listOfFields));
+    return sqlContext.applySchema(rows, DataType.createStructType(listOfFields));
   }
 
   private static class FieldType {
