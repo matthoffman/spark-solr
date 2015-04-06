@@ -46,16 +46,15 @@
                             </filters>
                             <artifactSet>
                                 <excludes>
-                                    <exclude>org.apache.spark:spark-core_2.10</exclude>
-                                    <exclude>org.apache.spark:spark-streaming_2.10</exclude>
+                                    <exclude>org.apache.spark:*</exclude>
                                     <exclude>org.apache.hadoop:*</exclude>
                                     <exclude>com.google.protobuf_spark:*</exclude>
                                     <exclude>com.google.guava:guava</exclude>
                                     <exclude>org.scala-lang:scala-library</exclude>
                                     <exclude>com.twitter:chill_2.10</exclude>
                                     <exclude>com.twitter:chill-java</exclude>
-                                    <exclude>org.spark-project.akka:akka-remote_2.10</exclude>
-                                    <exclude>org.spark-project.akka:akka-slf4j_2.10</exclude>
+                                    <exclude>org.spark-project.akka:*</exclude>
+                                    <exclude>org.spark-project:*</exclude>
                                     <exclude>net.java.dev.jets3t:jets3t</exclude>
                                     <exclude>org.eclipse.jetty:*</exclude>
                                     <exclude>org.eclipse.jetty.orbit:*</exclude>
@@ -85,7 +84,8 @@
                                     <exclude>javax.ws.rs:*</exclude>
                                     <exclude>xml-apis:xml-apis</exclude>
                                     <exclude>org.ow2.asm:asm</exclude>
-                                    <exclude>com.codahale.metrics:metrics-core</exclude>
+                                    <exclude>com.codahale.metrics:*</exclude>
+                                    <exclude>io.dropwizard.metrics:*</exclude>
                                     <exclude>com.sun.xml.bind:jaxb-impl</exclude>
                                     <exclude>javax.xml.bind:*</exclude>
                                     <exclude>com.sun.jersey:*</exclude>
@@ -106,6 +106,10 @@
                                 <relocation>
                                     <pattern>org.codehaus.jackson</pattern>
                                     <shadedPattern>shaded.codehaus.jackson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>shaded.fasterxml.jackson</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.objectweb.asm</pattern>
