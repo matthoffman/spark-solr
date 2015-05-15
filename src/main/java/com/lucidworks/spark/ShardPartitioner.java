@@ -48,7 +48,7 @@ public class ShardPartitioner extends Partitioner implements Serializable {
 
   public String getShardId(String docId) {
     DocCollection dc = getDocCollection();
-    Slice slice = dc.getRouter().getTargetSlice(docId, null, null, dc);
+    Slice slice = dc.getRouter().getTargetSlice(docId, null, null, null, dc);
     return slice.getName();
   }
 
@@ -69,7 +69,7 @@ public class ShardPartitioner extends Partitioner implements Serializable {
       throw new IllegalArgumentException("Only String document IDs are supported by this Partitioner!");
 
     DocCollection dc = getDocCollection();
-    Slice slice = dc.getRouter().getTargetSlice((String)docId, null, null, dc);
+    Slice slice = dc.getRouter().getTargetSlice((String)docId, null, null, null, dc);
     return getShardIndex(slice.getName(), dc);
   }
   
