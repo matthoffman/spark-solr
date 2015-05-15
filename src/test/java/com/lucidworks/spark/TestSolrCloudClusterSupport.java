@@ -63,7 +63,10 @@ public class TestSolrCloudClusterSupport {
 
       // upload the test configs
       SolrZkClient zkClient = cloudSolrServer.getZkStateReader().getZkClient();
-      ZkController.uploadConfigDir(zkClient, confDir, confName);
+      ZkConfigManager zkConfigManager =
+        new ZkConfigManager(zkClient);
+
+      zkConfigManager.uploadConfigDir(confDir.toPath(), confName);
     }
 
     ModifiableSolrParams modParams = new ModifiableSolrParams();

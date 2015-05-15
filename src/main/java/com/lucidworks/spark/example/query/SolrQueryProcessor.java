@@ -15,14 +15,10 @@ import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
-import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.DataFrame;
-import scala.Function1;
-import scala.Tuple2;
-
 import org.apache.spark.sql.Row;
-import scala.reflect.ClassManifestFactory;
-import scala.runtime.AbstractFunction1;
+import org.apache.spark.sql.SQLContext;
+import scala.Tuple2;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -104,6 +100,7 @@ public class SolrQueryProcessor implements SparkApp.RDDProcessor {
 
 
     // Now use schema information in Solr to build a queryable SchemaRDD
+
     SQLContext sqlContext = new SQLContext(jsc);
     DataFrame solrQuerySchemaRDD =
       solrRDD.applySchema(sqlContext, solrQuery, solrJavaRDD, zkHost, collection);
@@ -117,7 +114,8 @@ public class SolrQueryProcessor implements SparkApp.RDDProcessor {
 
     // The results of SQL queries are SchemaRDDs and support all the normal RDD operations.
     // The columns of a row in the result can be accessed by ordinal.
-    List<Long> count = results.javaRDD().map(new Function<Row, Long>() {
+    JavaRDD<Row> resultsRDD = results.javaRDD();
+    List<Long> count = resultsRDD.map(new Function<Row, Long>() {
       public Long call(Row row) {
         return row.getLong(0);
       }

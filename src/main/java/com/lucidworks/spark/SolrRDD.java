@@ -39,11 +39,14 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.mllib.feature.HashingTF;
+import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.DataFrame;
 
-import org.apache.spark.sql.types.*;
+import org.apache.spark.sql.types.DataType;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.Row;
 
 
@@ -70,7 +73,7 @@ public class SolrRDD implements Serializable {
   /**
    * Returns an iterator over TermVectors
    */
-  private class TermVectorIterator extends PagedResultsIterator<SolrTermVector> {
+  private class TermVectorIterator extends PagedResultsIterator<Vector> {
 
     private String field = null;
     private HashingTF hashingTF = null;
@@ -81,7 +84,7 @@ public class SolrRDD implements Serializable {
       hashingTF = new HashingTF(numFeatures);
     }
 
-    protected List<SolrTermVector> processQueryResponse(QueryResponse resp) {
+    protected List<Vector> processQueryResponse(QueryResponse resp) {
       NamedList<Object> response = resp.getResponse();
 
       NamedList<Object> termVectorsNL = (NamedList<Object>)response.get("termVectors");
@@ -89,10 +92,8 @@ public class SolrRDD implements Serializable {
         throw new RuntimeException("No termVectors in response! " +
           "Please check your query to make sure it is requesting term vector information from Solr correctly.");
 
-      List<SolrTermVector> termVectors = new ArrayList<SolrTermVector>(termVectorsNL.size());
-      Iterator<Map.Entry<String, Object>> iter = termVectorsNL.iterator();
-      while (iter.hasNext()) {
-        Map.Entry<String, Object> next = iter.next();
+      List<Vector> termVectors = new ArrayList<>(termVectorsNL.size());
+      for (Map.Entry<String, Object> next : termVectorsNL) {
         String nextKey = next.getKey();
         Object nextValue = next.getValue();
         if (nextValue instanceof NamedList) {
@@ -144,7 +145,16 @@ public class SolrRDD implements Serializable {
     params.set("collection", collection);
     params.set("qt", "/get");
     params.set("id", docId);
-    QueryResponse resp = cloudSolrServer.query(params);
+    QueryResponse resp = null;
+    try {
+      resp = cloudSolrServer.query(params);
+    } catch (Exception exc) {
+      if (exc instanceof SolrServerException) {
+        throw (SolrServerException)exc;
+      } else {
+        throw new SolrServerException(exc);
+      }
+    }
     SolrDocument doc = (SolrDocument) resp.getResponse().get("doc");
     List<SolrDocument> list = (doc != null) ? Arrays.asList(doc) : new ArrayList<SolrDocument>();
     return jsc.parallelize(list, 1);
@@ -184,7 +194,7 @@ public class SolrRDD implements Serializable {
     return docs;
   }
 
-  public JavaRDD<SolrTermVector> queryTermVectors(JavaSparkContext jsc, final SolrQuery query, final String field, final int numFeatures) throws SolrServerException {
+  public JavaRDD<Vector> queryTermVectors(JavaSparkContext jsc, final SolrQuery query, final String field, final int numFeatures) throws SolrServerException {
     // first get a list of replicas to query for this collection
     List<String> shards = buildShardList(getSolrServer(zkHost));
 
@@ -206,9 +216,9 @@ public class SolrRDD implements Serializable {
       query.setRows(DEFAULT_PAGE_SIZE); // default page size
 
     // parallelize the requests to the shards
-    JavaRDD<SolrTermVector> docs = jsc.parallelize(shards).flatMap(
-      new FlatMapFunction<String, SolrTermVector>() {
-        public Iterable<SolrTermVector> call(String shardUrl) throws Exception {
+    JavaRDD<Vector> docs = jsc.parallelize(shards).flatMap(
+      new FlatMapFunction<String, Vector>() {
+        public Iterable<Vector> call(String shardUrl) throws Exception {
           return new TermVectorIterator(new HttpSolrClient(shardUrl), query, "*", field, numFeatures);
         }
       }
@@ -265,7 +275,18 @@ public class SolrRDD implements Serializable {
     while (true) {
       cursors.add(nextCursorMark);
       query.set("cursorMark", nextCursorMark);
-      QueryResponse resp = cloudSolrServer.query(query);
+
+      QueryResponse resp = null;
+      try {
+        resp = cloudSolrServer.query(query);
+      } catch (Exception exc) {
+        if (exc instanceof SolrServerException) {
+          throw (SolrServerException)exc;
+        } else {
+          throw new SolrServerException(exc);
+        }
+      }
+
       nextCursorMark = resp.getNextCursorMark();
       if (nextCursorMark == null || resp.getResults().isEmpty())
         break;
@@ -288,6 +309,7 @@ public class SolrRDD implements Serializable {
 
   private static final Map<String,DataType> solrDataTypes = new HashMap<String, DataType>();
   static {
+    // TODO: handle multi-valued somehow?
     solrDataTypes.put("solr.StrField", DataTypes.StringType);
     solrDataTypes.put("solr.TextField", DataTypes.StringType);
     solrDataTypes.put("solr.BoolField", DataTypes.BooleanType);
@@ -298,7 +320,6 @@ public class SolrRDD implements Serializable {
     solrDataTypes.put("solr.TrieDateField", DataTypes.TimestampType);
     solrDataTypes.put("solr.UUIDField", DataTypes.StringType);
     solrDataTypes.put("solr.BinaryField", DataTypes.BinaryType);
-//    solrDataTypes.put("solr.CurrencyField", DataType.BinaryType); TODO: ??? double?
   }
 
   public DataFrame queryShards(SQLContext sqlContext, SolrQuery query) throws Exception {
@@ -325,12 +346,12 @@ public class SolrRDD implements Serializable {
     // Build up a schema based on the fields requested
     final String[] fields = query.getFields().split(",");
     Map<String,FieldType> fieldTypeMap = getFieldTypes(fields, solrBaseUrl, collection);
-    List<StructField> listOfFields = new ArrayList<StructField>();
+    List<StructField> listOfFields = new ArrayList<>();
     for (String field : fields) {
       FieldType fieldType = fieldTypeMap.get(field);
       DataType dataType = (fieldType != null) ? solrDataTypes.get(fieldType.fieldTypeClass) : null;
       if (dataType == null) dataType = DataTypes.StringType;
-      if (fieldType.isMultivalued) {
+      if (fieldType != null && fieldType.isMultivalued) {
         // its multivalued, so it's technically an array of the given datatype
         dataType = DataTypes.createArrayType(dataType, false);
       }
@@ -340,7 +361,7 @@ public class SolrRDD implements Serializable {
     // now convert each SolrDocument to a Row object
     JavaRDD<Row> rows = docs.map(new Function<SolrDocument, Row>() {
       public Row call(SolrDocument doc) throws Exception {
-        List<Object> vals = new ArrayList<Object>(fields.length);
+        List<Object> vals = new ArrayList<>(fields.length);
         for (String field : fields)
           vals.add(doc.getFirstValue(field));
         return RowFactory.create(vals.toArray());
@@ -363,7 +384,7 @@ public class SolrRDD implements Serializable {
   private static Map<String,FieldType> getFieldTypes(String[] fields, String solrBaseUrl, String collection) {
 
     // collect mapping of Solr field to type
-    Map<String,FieldType> fieldTypeMap = new HashMap<String,FieldType>();
+    Map<String,FieldType> fieldTypeMap = new HashMap<>();
     for (String field : fields) {
 
       if (fieldTypeMap.containsKey(field))
@@ -450,7 +471,7 @@ public class SolrRDD implements Serializable {
         solrQuery.setStart(startIndex);
       }
       resp = solrServer.query(solrQuery);
-    } catch (SolrServerException exc) {
+    } catch (Exception exc) {
 
       // re-try once in the event of a communications error with the server
       Throwable rootCause = SolrException.getRootCause(exc);
@@ -465,9 +486,21 @@ public class SolrRDD implements Serializable {
           Thread.interrupted();
         }
 
-        resp = solrServer.query(solrQuery);
+        try {
+          resp = solrServer.query(solrQuery);
+        } catch (Exception excOnRetry) {
+          if (excOnRetry instanceof SolrServerException) {
+            throw (SolrServerException)excOnRetry;
+          } else {
+            throw new SolrServerException(excOnRetry);
+          }
+        }
       } else {
-        throw exc;
+        if (exc instanceof SolrServerException) {
+          throw (SolrServerException)exc;
+        } else {
+          throw new SolrServerException(exc);
+        }
       }
     }
 
