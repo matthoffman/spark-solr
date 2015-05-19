@@ -11,7 +11,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>1.7</java.version>
-        <spark.version>1.3.1</spark.version>
+        <spark.version>1.2.0</spark.version>
         <solr.version>5.1.0</solr.version>
     </properties>
     <build>
@@ -35,6 +35,8 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>shaded</shadedClassifierName>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -50,7 +52,6 @@
                                     <exclude>org.apache.spark:*</exclude>
                                     <exclude>org.apache.hadoop:*</exclude>
                                     <exclude>com.google.protobuf_spark:*</exclude>
-                                    <exclude>com.google.guava:guava</exclude>
                                     <exclude>org.scala-lang:scala-library</exclude>
                                     <exclude>com.twitter:chill_2.10</exclude>
                                     <exclude>com.twitter:chill-java</exclude>
@@ -82,21 +83,19 @@
                                     <exclude>org.apache.james:*</exclude>
                                     <exclude>org.ow2.asm:asm-debug-all</exclude>
                                     <exclude>javax.xml.stream:stax-api</exclude>
-                                    <exclude>javax.ws.rs:*</exclude>
                                     <exclude>xml-apis:xml-apis</exclude>
                                     <exclude>org.ow2.asm:asm</exclude>
                                     <exclude>com.codahale.metrics:*</exclude>
                                     <exclude>io.dropwizard.metrics:*</exclude>
                                     <exclude>com.sun.xml.bind:jaxb-impl</exclude>
                                     <exclude>javax.xml.bind:*</exclude>
-                                    <exclude>com.sun.jersey:*</exclude>
                                     <exclude>org.mortbay.jetty:*</exclude>
                                     <exclude>org.apache.avro:*</exclude>
                                     <exclude>javax.servlet:*</exclude>
                                     <exclude>org.codehaus.jettison:*</exclude>
-                                    <exclude>joda-time:joda-time</exclude>
-                                    <exclude>com.fasterxml.jackson:*</exclude>
                                     <exclude>com.jcraft:jsch</exclude>
+                                    <exclude>tomcat:jasper-compiler</exclude>
+                                    <exclude>tomcat:jasper-runtime</exclude>
                                 </excludes>
                             </artifactSet>
                             <relocations>
@@ -115,6 +114,22 @@
                                 <relocation>
                                     <pattern>org.objectweb.asm</pattern>
                                     <shadedPattern>shaded.objectweb.asm</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.joda.time</pattern>
+                                    <shadedPattern>shaded.joda.time</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.google.guava</pattern>
+                                    <shadedPattern>shaded.google.guava</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.sun.jersey</pattern>
+                                    <shadedPattern>shaded.sun.jersey</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>javax.ws.rs</pattern>
+                                    <shadedPattern>shaded.javax.ws.rs</shadedPattern>
                                 </relocation>
                             </relocations>
                         </configuration>
