@@ -506,7 +506,7 @@ public class SolrRDD implements Serializable {
 
   public DataFrame queryShards(SQLContext sqlContext, SolrQuery query) throws Exception {
     JavaRDD<SolrDocument> docs = queryShards(new JavaSparkContext(sqlContext.sparkContext()), query);
-    return applySchema(sqlContext, query, docs, zkHost, collection);
+    return applySchema(sqlContext, query, docs);
   }
 
   public DataFrame applySchema(SQLContext sqlContext,
