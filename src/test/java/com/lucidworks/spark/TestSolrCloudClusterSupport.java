@@ -8,7 +8,6 @@ import org.apache.log4j.Logger;
 import org.apache.solr.client.solrj.impl.CloudSolrClient;
 import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.cloud.MiniSolrCloudCluster;
-import org.apache.solr.cloud.ZkController;
 import org.apache.solr.common.cloud.*;
 import org.apache.solr.common.params.CollectionParams;
 import org.apache.solr.common.params.CoreAdminParams;
@@ -37,8 +36,11 @@ public class TestSolrCloudClusterSupport {
   @BeforeClass
   public static void startCluster() throws Exception {
     File solrXml = new File("src/test/resources/solr.xml");
-    File tempDir = Files.createTempDir();
-    cluster = new MiniSolrCloudCluster(1, null, tempDir, solrXml, null, null);
+    File targetDir = new File("target");
+    if (!targetDir.isDirectory()) {
+      targetDir = Files.createTempDir(); 
+    }
+    cluster = new MiniSolrCloudCluster(1, null, targetDir, solrXml, null, null, null);
 
     cloudSolrServer = new CloudSolrClient(cluster.getZkServer().getZkAddress(), true);
     cloudSolrServer.connect();
@@ -52,11 +54,11 @@ public class TestSolrCloudClusterSupport {
     cluster.shutdown();
   }
 
-  protected static void createCollection(String collectionName, int numShards, int replicationFactor, String confName) throws Exception {
-    createCollection(collectionName, numShards, replicationFactor, confName, null);
+  protected static void createCollection(String collectionName, int numShards, int replicationFactor, int maxShardsPerNode, String confName) throws Exception {
+    createCollection(collectionName, numShards, replicationFactor, maxShardsPerNode, confName, null);
   }
 
-  protected static void createCollection(String collectionName, int numShards, int replicationFactor, String confName, File confDir) throws Exception {
+  protected static void createCollection(String collectionName, int numShards, int replicationFactor, int maxShardsPerNode, String confName, File confDir) throws Exception {
     if (confDir != null) {
       assertTrue("Specified Solr config directory '"+
         confDir.getAbsolutePath()+"' not found!", confDir.isDirectory());
@@ -74,6 +76,7 @@ public class TestSolrCloudClusterSupport {
     modParams.set("name", collectionName);
     modParams.set("numShards", numShards);
     modParams.set("replicationFactor", replicationFactor);
+    modParams.set("maxShardsPerNode", maxShardsPerNode);
     modParams.set("collection.configName", confName);
     QueryRequest request = new QueryRequest(modParams);
     request.setPath("/admin/collections");
